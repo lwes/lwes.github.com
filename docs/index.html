@@ -1,0 +1,421 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>Light Weight Event System</title>
+<meta name="keywords" content="" />
+<meta name="description" content="" />
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="wrapper">
+<!-- start header -->
+<div id="logo">
+	<h1><a href="http://www.lwes.org">Light Weight Event System </a></h1>
+</div>
+<div id="header">
+	<div id="menu">
+		<ul>
+			<li class="current_page_item"><a href="/">Introduction</a></li>
+			<li><a href="/docs">Documentation</a></li>
+			<li><a href="/download">Download</a></li>
+			<li class="last"><a href="/contact">Contact</a></li>
+		</ul>
+	</div>
+</div>
+<!-- end header -->
+</div>
+<!-- start page -->
+<div id="page">
+	<!-- start content -->
+	<div id="content">
+		<div class="post">
+			<h1 class="title">Getting Started</h1>
+			<div class="entry">
+				<h4>ESF Files</h4>
+				<p>
+					In developing an LWES application there a couple of things to consider:
+					<ul>
+					<li>What sort of events do I want in the system?</li>
+					<li>Do I want data consistency between the emitters and listeners?</li>
+					</ul>
+				</p>
+				<p>
+ 
+					Question 1 is really part of application design, and question 2 is either yes or no.  Both of these are implemented via the creation of an Event Specification Format (ESF) file.  An ESF file provides a list of events which contain some number of named attributes which are one of a basic set of types.  The specifics of the format are described separately, but for the examples below we will select an event which contains 4 fields, a string, a 64 bit integer, a boolean and an ip address. We will call this event UserLogin and place its description in a file called user.esf.</p>
+					
+<pre>
+# the MetaEventInfo is a special single level of inheritance of events.  Any 
+# fields in this Event are allowed in all other events.  Certain systems 
+# will set these fields, so the SenderIP, SenderPort, and ReceiptTime are 
+# set by all journallers and listeners, while the encoding is set by all 
+# emitters. 
+MetaEventInfo 
+{ 
+  ip_addr SenderIP;    # IP address of Sender 
+  uint16  SenderPort;  # IP port of Sender 
+  int64   ReceiptTime; # time this event was received, in 
+                       # milliseconds since epoch 
+  int16   enc;         # encoding of strings in the event 
+  uint16  SiteID;      # id of site sending the event 
+}
+ 
+UserLogin 
+{ 
+  string  username;    # username of user 
+  uint64  password;    # unique hash of the users password 
+  ip_addr clientIP;    # client ip the user attempted to connect from 
+} 
+</pre>
+<p>
+The above text would be put into a file. If this file is given to a particular component (either an emitter or listener, journallers do not use this file), then that particular component will check all fields of the event as they are set, and any attempt to set a field wrong will result in an exception or error. If this file is not given then events are not checked against this. This may be useful in systems where you want the events to change without restarting emitters or listeners. 
+</p>
+
+<p>
+Next we will describe the use of this by developing equivalent emitters and listeners using the three different language bindings. 
+</p>
+
+			</div>			
+		</div>
+	
+		<div class="post">
+			<h1 class="title">Java</h1>
+			<div class="entry">
+				<p>
+Creating an emitter in java is a simple object instantiation, creating and filling out an event is the same.
+<pre>
+
+import java.net.*;
+import org.lwes.*;
+import org.lwes.emitter.*;
+
+public class TestEmitter {
+  public static void main(String[] args) {
+    String mcast_addr = "224.1.11.111";
+    int mcast_port = 9191;
+    MulticastEventEmitter emitter = new MulticastEventEmitter();
+		
+    try {
+      // try creating an emitter
+      emitter.setMulticastAddress(InetAddress.getByName(mcast_addr));
+      emitter.setMulticastPort(mcast_port);
+      emitter.setESFFilePath("/path/to/user.esf");
+      emitter.initialize();
+    } catch(Exception e) {
+      System.err.println("Unable to create emitter");
+      System.exit(1);
+    }
+
+    try {
+      // try to emit an event
+      Event e = emitter.createEvent("UserLogin", false);
+      e.setString("username", "bob"); 
+      e.setUInt64("password", 0xfeedabbadeadbeefL); 
+      e.setIPAddress("clientIP", new IPAddress("127.0.0.1")); 
+      e.setBoolean("successful", false);
+      emitter.emit(e);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+}
+</pre>
+				</p>
+				<p>Now, if you compile and run it, you might notice that nothing seems to happen.  That's probably because the program emitted the event, but you don't have a listener receiving it!
+				</p>
+				<h4>LWES tools</h4>
+				<p>
+				The LWES C library comes with a few command line tools that are useful for development and debugging.  One of the most useful ones is called 'lwes-event-printing-listener'.  In a separate terminal, run the listener:
+				</p>
+<pre>
+	$ lwes-event-printing-listener -m 224.1.11.111 -p 9191
+</pre>
+
+Now run your Java emitter again.  You should see an event print out in the listener terminal which looks like this:
+<pre>
+UserLogin[8] 
+{ 
+        SenderPort = 32935; 
+        password = 18369527274202316527; 
+        enc = 1; 
+        username = bob; 
+        successful = false; 
+        ReceiptTime = 1209163662135; 
+        clientIP = 127.0.0.1; 
+        SenderIP = 10.72.1.248; 
+}
+</pre>
+<p>
+Now lets say you wanted to create a listener that would count the number of successful logins and display those that are not successful.  Create a new Java program that implements a listener:
+</p>
+
+<h4>LoginListener.java</h4>
+<pre>
+import java.net.*;
+import org.lwes.*;
+import org.lwes.listener.*;
+
+public class LoginListener implements EventHandler { 
+  public void handleEvent(Event event) { 
+    final String eventName  = event.getEventName(); 
+    if (eventName.equals("UserLogin")) { 
+      try { 
+        if ( ! event.getBoolean("successful") ) { 
+          System.err.println("Unsuccessful login of " 
+                             +event.getString("username") 
+                             +" from ip address " 
+                             +event.getIPAddress("clientIP")); 
+        } 
+      } catch (AttributeNotSetException e) { 
+        System.err.println ("Some attribute not set in event"); 
+        // just fall through so we can catch the next event 
+      } catch (NoSuchAttributeException e) { 
+        System.err.println ("Attribute does not exist"); 
+        // just fall through so we can catch the next event 
+      }
+    } 
+  } 
+} 
+</pre>
+
+<h4>TestListener.java</h4>
+<pre>
+import java.net.*;
+import org.lwes.*;
+import org.lwes.listener.*;
+
+public class TestListener {
+  public static void main(String[] args) {
+    EventHandler myHandler = new LoginListener();
+
+    try {
+      InetAddress address = InetAddress.getByName("224.1.11.111");
+      DatagramEventListener listener = new DatagramEventListener();
+      listener.setAddress(address);
+      listener.setPort(9191);
+      listener.addHandler(myHandler);
+      listener.initialize();
+    } catch(Exception e) {
+      e.printStackTrace();
+   }
+
+  // keep this thread busy
+  while(true) { try { Thread.sleep(1000);} catch(InterruptedException ie) {} }
+  }
+}
+</pre>
+			</div>
+		</div>
+	
+		<div class="post">
+			<h1 class="title">Perl</h1>
+			<div class="entry">
+<pre>
+#!/usr/local/bin/perl 
+use strict; 
+use warnings; 
+use LWES; 
+
+# set up an emitter 
+my $LWES_ADDR   = "224.1.1.11"; 
+my $LWES_PORT   = 12345; 
+my $LWES_EMITTER= LWES::create_emitter($LWES_ADDR,0,$LWES_PORT,1,60); 
+my $LWES_DB     = LWES::create_db("user.esf"); 
+
+# create an event 
+my $event = LWES::create_event($LWES_DB, 
+	                           'UserLogin', 
+	                           $LWES::DEFAULT_ENCODING); 
+# fill out fields
+LWES::set_string ($event,'username',  "bob"); 
+LWES::set_uint64 ($event,'password',  "feedabbadeadbeef"); 
+LWES::set_ip_addr($event,'clientIP',  "127.0.0.1"); 
+LWES::set_boolean($event,'successful', 0); 
+
+# Emit event 
+LWES::emit($LWES_EMITTER, $event);
+
+# clean up 
+LWES::destroy_event($event); 
+LWES::destroy_emitter($LWES_EMITTER); 
+LWES::destroy_db($LWES_DB); 
+</pre>
+<p>
+Run the lwes-event-printing-listener in one terminal window, and then run the perl program and you should see the same output as the Java program.
+</p>
+<p>
+And now to create a listener:
+</p>
+<pre>
+package LWES::Listeners::Login; 
+
+use LWES::Listener; 
+our @ISA = qw(LWES::Listener); 
+	
+sub processEvent { 
+ 	my $self  = shift; 
+	my $event = shift; 
+	if ( $event->{EventType} eq "UserLogin" ) { 
+		if ( ! $event->{successfull} ) { 
+			print "Unsuccessful login of ".$event->{username}.
+			      " from ip address " 
+	              .$event->{clientIP}."\n"; 
+	    } 
+	  } 
+	} 
+}
+</pre>
+
+<p>
+This can be run using the command:
+</p>
+
+<pre>
+	$ lwes-perl-event-listener -m 224.1.1.11 -p 12345 LoginListener 
+</pre>
+</div>
+</div>
+
+<div class="post">
+	<h1 class="title">C</h1>
+	<div class="entry">
+<p>
+Creating emitters in C is similar to the other languages.
+</p>
+<pre>
+#include &lt;lwes.h&gt; 
+
+int main (int argc, char *argv[]) 
+{ 
+	struct lwes_emitter *emitter; 
+	struct lwes_event *event; 
+	struct lwes_event_type_db *db; 
+	emitter = lwes_emitter_create("224.1.11.111", NULL, 12345, 1, 60); 
+	db = lwes_event_type_db_create("user.esf"); 
+	event  = lwes_event_create_with_encoding(db, "UserLogin", 1); 
+
+	lwes_event_set_STRING(event, "username",  "bob"); 
+	lwes_event_set_U_INT_64(event, "password",  0xfeedabbadeadbeefULL); 
+	lwes_event_set_IP_ADDR_w_string(event, "clientIP",  "127.0.0.1"); 
+	lwes_event_set_BOOLEAN(event, "successful", 0); 
+	lwes_emitter_emit(emitter, event); 
+	lwes_event_destroy(event); 
+	lwes_event_type_db_destroy(db); 
+	lwes_emitter_destroy(emitter); 
+} 
+</pre>
+
+			</div>
+		</div>
+
+		<div class="post">
+			<h1 class="title">Event Specification Format</h1>
+			<div class="entry">
+<p>The Event Specification File is parsed according to the following grammar.</p>
+
+<pre>
+eventlist: event 
+	| eventlist event 
+	; 
+				  
+event: eventname '{' attributelist '}' 
+	; 
+
+eventname: EVENTWORD 
+	;
+	 
+attributelist: attribute 
+	|   attributelist attribute 
+	; 
+  
+attribute: type attributename ';' 
+	;
+	 
+attributename: ATTRIBUTEWORD 
+	;
+	 
+type: UINT16 
+	| INT16 
+	| UINT32 
+	| INT32 
+	| STRING 
+	| IP_ADDR 
+	| INT64 
+	| UINT64 
+	| BOOLEAN 
+	;
+	 
+EVENTWORD: word 
+	; 
+ATTRIBUTEWORD: word 
+	; 
+   
+word: [a-zA-Z0-9_:]+ 
+	; 
+
+</pre>			
+<p>The tokens for type are evaluated as follows:</p>
+<table>
+<tr><th>Parser Token</th><th>String Representation</th></tr>
+<tr><td>UINT16</td><td>uint16</td></tr> 
+<tr><td>INT16</td><td>int16</td></tr> 
+<tr><td>UINT32</td><td>uint32</td></tr> 
+<tr><td>INT32</td><td>int32</td></tr> 
+<tr><td>UINT64</td><td>uint64</td></tr> 
+<tr><td>INT64</td><td>int64</td></tr> 
+<tr><td>BOOLEAN</td><td>boolean</td></tr> 
+<tr><td>STRING</td><td>string</td></tr> 
+<tr><td>IP_ADDR</td><td>ip_addr</td></tr> 
+<tr><td>EVENTWORD</td><td>event</td></tr> 
+<tr><td>ATTRIBUTEWORD</td><td>attribute</td></tr>
+</table>
+<p>
+An example</p>
+<pre>
+Vote 
+{ 
+    string url; 
+    string canon_query; 
+    string vote; 
+}
+</pre>
+
+
+
+				
+			</div>
+		</div>
+
+	</div>
+	<!-- end content -->
+	<!-- start sidebar -->
+	<div id="sidebar">
+		<ul>
+
+			<li>
+				<h2>API Documentation</h2>
+				<ul>
+					<li><a href="/docs/doxygen/html">doxygen (C) API documentation</a></li>
+					<li><a href="/docs/javadoc/api">JavaDoc API documentation</a></li>
+				</ul>
+			</li>
+			<li>
+				<h2>Contributors</h2>
+				<a href="http://www.openx.org"><img src="/images/openx.jpg"/></a>
+				<p/>
+				<a href="http://www.att.com"><img src="/images/att.png"/></a>
+			</li>
+		</ul>
+	</div>
+	<!-- end sidebar -->
+	<div style="clear: both;">&nbsp;</div>
+</div>
+<!-- end page -->
+<!-- start footer -->
+<div id="footer">
+	<p id="legal">&copy; 2009 Light Weight Event System. All Rights Reserved.</p>
+</div>
+<!-- end footer -->
+</body>
+</html>

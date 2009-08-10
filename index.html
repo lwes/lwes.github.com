@@ -1,0 +1,127 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>Light Weight Event System</title>
+<meta name="keywords" content="" />
+<meta name="description" content="" />
+<link href="/css/style.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="wrapper">
+<!-- start header -->
+<div id="logo">
+	<h1><a href="http://www.lwes.org">Light Weight Event System </a></h1>
+</div>
+<div id="header">
+	<div id="menu">
+		<ul>
+			<li class="current_page_item"><a href="/">Introduction</a></li>
+			<li><a href="/docs">Documentation</a></li>
+			<li><a href="/download">Download</a></li>
+			<li class="last"><a href="/contact">Contact</a></li>
+		</ul>
+	</div>
+</div>
+<!-- end header -->
+</div>
+<!-- start page -->
+<div id="page">
+	<!-- start content -->
+	<div id="content">
+		<div class="post">
+			<h1 class="title">Introduction</h1>
+			<div class="entry">
+				<p>
+					The Light Weight Event System (LWES) is an open source toolkit allowing the exchange of information between machines in a platform agnostic, language neutral, decoupled way.  The exchange of information is done in a connectionless fashion using multicast or unicast UDP, using self-describing data so that any platform or language can translate it into its local dialect.
+				</p>
+				<p>This leads to a system with the following features:
+				<ul>
+					<li>Fire and forget messaging</li>
+					<li>Decoupling of senders (emitter) from receivers (listeners)</li>
+					<li>Centerless, no single point of failure</li>
+					<li>Support for many to many communications where nodes can enter and leave the system at any time</li>
+					<li>Computer language and hardware platform independent</li>
+				</ul>	
+				</p>
+				<p>The system consists of two major components:
+				<ul>
+					<li>Emitter: a source of events, this is usually a server or process that wants to announce something</li>
+					<li>Listener: a sink of events which deserializes and processes events on the fly as they are received.</li>
+				</ul>
+				</p>
+				<p>Optionally, one can run a "journaller", which is a listener that writes raw events to a compressed log instead of deserializing the data, effectively deferring deserialization to a later time.</p>
+				<p>LWES uses key-value pair data types and supports strings as keys and a set of primitive types as values.  Note that LWES does not support complex types or nested objects.  This was a deliberate design decision in order to constrain the scope of the system and limit data exchanges to just key-value pairs.  If you need to exchange complex types or do RPC, tools such as <a href="http://incubator.apache.org/thrift/">Thrift</a> or <a href="http://code.google.com/p/protobuf/">Protocol Buffers</a> are probably more appropriate for you.
+				</p>
+				<p>The Light Weight Event System was originally developed at <a href="http://web.archive.org/web/20010830140743/http://www.goto.com/">GoTo.com</a>, which became <a href="http://web.archive.org/web/20011118191954/www.overture.com/">Overture</a>, which was acquired by <a href="http://www.yahoo.com">Yahoo!</a>, where it was open sourced in 2007.  Currently, it is maintained by developers at <a href="http://www.openx.org">OpenX</a> as well as some of the original contributors.
+			</div>
+		</div>
+		<div class="post">
+			<h2 class="title">LWES Design Features</h2>
+			<div class="entry">
+				<p>
+					LWES is specifically designed for non-blocking, best-effort delivery of data from a sender (emitter) to a set of receivers (listeners).  The LWES library provides UDP unicast and multicast implementations of emitters and listeners which provide these functions in various programming languages.  However, you could easily write your own transport and only use the LWES API and serialization methods to generate network-ordered byte arrays.  But the original intention was to use UDP to provide connectionless, best effort delivery of data.
+				</p>
+				<h4>But Isn't UDP Unreliable?</h4>
+				<p>
+					One of the most common questions regarding the Light Weight Event System is the design choice to use UDP multicast by default.  Packets can get dropped, machines can have hardware issues, and networks can get congested, in which case data can be lost forever.  This should be taken account before using LWES -- it is a best-effort system designed to provide minimal impact to applications that are senders (emitters).  Some key points:
+				<ul>
+					<li>Establishing TCP connections is expensive.  If you don't need reliable, guaranteed delivery, it can be overkill.</li>
+					<li>You can run multiple journallers or listeners when using multicast, to protect against listener failure.</li>
+					<li>Implementing non-blocking clients over TCP (for example, using libevent) is non-trivial.</li>
+					<li>When getting data from point A to point B, you have to do flow control <i>somewhere</i>.  LWES puts the burden of flow control on the receiver so that applications sending data are minimally impacted from a performance standpoint.</li>
+					<li>You can always implement your own transport if you don't like UDP.</li>
+				</ul>
+				</p>
+			</div>
+		</div>
+		<div class="post">
+			<h2 class="title">LWES Use Cases</h2>
+			<div class="entry">
+				<p>
+					Taking these considerations into account, LWES is useful in a number of specialized scenarios:
+					<ul>
+						<li>Monitoring and Instrumentation: machines can report about their status using LWES, and applications are minimally blocked by its presence.  Other machines can receive these events and process them.  <a href="http://www.sourceforge.net/projects/mondemand">MonDemand</a> is an implementation of an monitoring and instrumentation system using LWES.</li>
+						<li>Logging: machines can log events remotely over LWES to journaller machines to be processed in batch at a later date.  The LWES deserialization and access methods perform very well on batch systems such as <a href="http://hadoop.apache.org">Hadoop</a>.</li>
+						<li>Feedback Loops: services can report their status, and a separate listener can make feedback decisions and pass the data back to the running service.</li>
+						<li>Ad-Hoc Debugging: if a system is sending diagnostic events over UDP multicast, you could easily start up a listener and start to see what's happening in real-time.  When you're finished, you simply stop the listener and the system is unaffected.</li>
+					</ul>
+				</p>
+			</div>
+		</div>		
+
+	</div>
+	<!-- end content -->
+	<!-- start sidebar -->
+	<div id="sidebar">
+		<ul>
+
+			<li>
+				<h2>Useful Links</h2>
+				<ul>
+					<li><a href="http://sourceforge.net/projects/lwes/">SourceForge Project Page</a></li>
+					<li><a href="http://sourceforge.net/project/showfiles.php?group_id=234456">Downloads</a></li>
+					<li><a href="http://sourceforge.net/scm/?type=svn&group_id=234456">Source Code</a></li>
+					<li><a href="http://sourceforge.net/tracker/?group_id=234456">Bug Reports</a></li>
+				</ul>
+			</li>
+			<li>
+				<h2>Contributors</h2>
+				<a href="http://www.openx.org"><img src="/images/openx.jpg"/></a>
+				<p/>
+				<a href="http://www.att.com"><img src="/images/att.png"/></a>
+			</li>
+		</ul>
+	</div>
+	<!-- end sidebar -->
+	<div style="clear: both;">&nbsp;</div>
+</div>
+<!-- end page -->
+<!-- start footer -->
+<div id="footer">
+	<p id="legal">&copy; 2009 Light Weight Event System. All Rights Reserved.</p>
+</div>
+<!-- end footer -->
+</body>
+</html>
