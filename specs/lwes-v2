@@ -1,0 +1,56 @@
+LWES V2.0
+
+1. Goals
+   - nested events
+
+2. ESF changes
+
+  Example ESF
+
+    MetaEventInfo
+    {
+      required   ip_addr          SenderIP;
+      required   uint16           SenderPort
+      required   int64            ReceiptTime;
+      required   string(10)       version = "25.1.6";   # esf version number
+      optional   uint16           SiteID;
+      optional   string(10)       st;
+    }
+
+    SubEvent
+    {
+      required   string(10)       key;
+      required   string(100)      value;
+    }
+
+    Event
+    {
+      required   SubEvent         aSubEvent;
+      required   SubEvent[10]     aSubEventArray;
+    }
+
+3. Event Serialization Format
+    1. Type Encoding
+      type      DEC HEX  byte value (bin)  array value (bin)
+      --------- --- ---- ----------------  ------------------
+      EVENT      14 0x0E   00001110          10001110
+
+    EVENT
+      Variable number of bytes
+      TBD???
+
+4. API Changes
+    /* set a sub event */
+    int
+    lwes_event_set_EVENT
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       struct lwes_event *event);
+
+    /* get a sub event */
+    int
+    lwes_event_get_EVENT
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       struct lwes_event **event);
+

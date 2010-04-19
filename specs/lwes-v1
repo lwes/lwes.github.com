@@ -1,0 +1,333 @@
+LWES V1.0
+
+LWES Core Changes
+
+1. Goals
+    - additional types
+      - byte
+      - float
+      - double
+      - ipv4
+    - containers of sorts
+      - arrays
+    - capacity planning
+      - maximum size of event should be able to be determined from esf alone
+    - backward compatibility for serialization (ie, be able to deserialize
+      old events with new library).
+    - string maximum sizes
+    - required/optional fields
+
+2. ESF changes
+    1. new string type includes a maximum length specified as (\d+) like
+       string(10), the (\d+) is optional, with a default of 65535 which is
+       large but what is used in the old versions.  This will allow older
+       ESFs to work without modification
+    2. required fields must be set at emission time, optional fields may not
+    3. byte type is new
+    4. arrays are specified by adding [\d+] after the type, the number is the
+       maximum length
+    5. default values can be set for base types and arrays of base types
+
+  Example ESF
+
+    MetaEventInfo
+    {
+      required   ip_addr          SenderIP;
+      required   uint16           SenderPort
+      required   int64            ReceiptTime;
+      required   string(10)       version = "25.1.6";   # esf version number
+      optional   uint16           SiteID;
+      optional   string(10)       st;
+    }
+
+    Event
+    {
+      required   boolean          aBool;
+      required   byte             aByte;
+      required   uint16           aUInt16;
+      required   int16            anInt16;
+      required   uint32           aUInt32;
+      required   int32            anInt32;
+      required   uint64           aUInt64;
+      required   int64            anInt64;
+      required   string(10)       aString;
+      required   ip_addr          anIPAddr; # deprecated
+      required   ipv4             ipv4Addr; # ipv4 with better marshalling
+      required   float            aFloat;   # we might as well support it
+      required   double           aDouble;  # this as well
+
+      required   boolean[10]      aBoolArray;
+      required   byte[10]         aByteArray;
+      required   uint16[10]       aUInt16Array;
+      required   int16[10]        anInt16Array;
+      required   uint32[10]       aUInt32Array;
+      required   int32[10]        anInt32Array;
+      required   uint64[10]       aUInt64Array;
+      required   int64[10]        anInt64Array;
+      required   string(10)[10]   aStringArray;
+      required   ip_addr[10]      anIPAddrArray;
+
+      optional   string(10)       anotherString;
+
+      # since this field is defaulted it will always be set at event
+      # creation time to the default value, and thus always be
+      # sent so being optional doesn't really matter
+      optional   boolean          defaultBoolean    = true;  # false also
+      optional   byte             defaultByte       = 5;
+      optional   string(5)        defaultedString   = "foo";
+      optional   int[5]           defaultedIntArray = { 1, 2, 3, 4, 5 };
+    }
+
+  Defaults
+    - default to optional if not set (for backwards compatibility, but
+      planning on leaving in place).
+    - string max defaults to 65535 if not set (may deprecate and require
+      length in future versions), if not set the checker should warn.
+
+  Possible ESF Compile Time checks
+    - maximum event size
+    - warn if string max length not set
+    - error is default values are out of range
+
+  Runtime checks
+    - defined event (EXISTING)
+      - checked when event name is set (DOES NOT CURRENTLY HAPPEN in C)
+    - defined attribute for event (EXISTING)
+      - checked when an attribute is added to an event (EXISTING)
+    - defined type for attribute for event (EXISTING)
+      - checked when an attribute is added to an event (EXISTING)
+    - check required fields are set (DOES NOT EXIST)
+      - checked when an event is emitted, an error is returned if not all
+        fields are set and event is not sent and an exception is thrown
+        or a non-zero return code is sent
+    - check maximum string length (DOES NOT EXIST)
+      - checked when set_STRING is called.
+        If esf db exists and the string is greater than the value given
+        in the esf, the field is not set and an exception or error is
+        returned.
+
+3. Event Serialization Format
+
+      <version><event_name_length>     : 1 byte, 1 byte => N
+    | <event_name_length>              : 1 byte => N         (See 1 below)
+    <event_name_bytes>                 : N bytes
+    <number_of_attributes>             : 2 bytes (U_INT_16) => M
+    for (0 : M)
+      <attribute_name_length>          : 1 byte => X
+      <attribute_name_bytes>           : X bytes
+      <attribute_type>                 : 1 byte              (See 2 below)
+      <attribute_data>                 : Variable # bytes    (See 3 below)
+    <checksum>                         : 2 bytes             (See 4 below)
+
+    1. Versioning
+
+       When first bit is 0 event is in the old format, so first byte is
+        <event_name_length>.
+       When first bit is 1 this is the new format, so first byte is
+        <version> and second byte is <event_name_length>
+
+    2. Type Encoding
+
+      type      DEC HEX  byte value (bin)  array value (bin)
+      --------- --- ---- ----------------  ------------------
+      U_INT_16    1 0x01   00000001          10000001
+      INT_16      2 0x02   00000010          10000010
+      U_INT_32    3 0x03   00000011          10000011
+      INT_32      4 0x04   00000100          10000100
+      STRING      5 0x05   00000101          10000101
+      IP_ADDR     6 0x06   00000110          10000110
+      INT_64      7 0x07   00000111          10000111
+      U_INT_64    8 0x08   00001000          10001000
+      BOOLEAN     9 0x09   00001001          10001001
+      BYTE       10 0x0A   00001010          10001010
+      FLOAT      11 0x0B   00001011          10001011
+      DOUBLE     12 0x0C   00001100          10001100
+      IPV4       13 0x0D   00001101          10001101
+
+      * IP_ADDR should be deprecated, so should put out a warning from the esf
+        checker
+
+    3. Attribute Data Encoding
+
+    Where <attribute_data> is one of the normal types or an array or event type
+
+    U_INT_16
+      2 bytes - Network order
+    INT_16  
+      2 bytes - Network order
+    U_INT_32
+      4 bytes - Network order
+    INT_32  
+      4 bytes - Network order
+    STRING
+      2 bytes (U_INT_16) length => N
+      N bytes data - UTF-8 encoded
+    IP_ADDR 
+      4 bytes - Network order reversed *
+
+      * note: this encoding is completely wrong, so we are deprecating this type
+    INT_64
+      8 bytes - Network order
+    U_INT_64
+      8 bytes - Network order
+    BOOLEAN
+      1 byte  - 1 is true, 0 is false
+    BYTE
+      1 byte
+    FLOAT/DOUBLE
+      the way thrift (and probably protobuf) does things is they use
+      the 'IEEE 754 floating-point "single format" bit layout', which is easy
+      as C/C++/Java/etc all seem to easily support it.
+
+      In C you do
+
+      int32_t floatToIntBits (float input)
+      {
+        return *((int32_t *)&input);
+      }
+
+      float intBitsToFloat (int32_t input)
+      {
+        return *((float *)&input);
+      }
+
+      for floats and
+
+      int64_t doubleToLongBits (double input)
+      {
+        return *((int64_t *)&input);
+      }
+
+      double longBitsToDouble (int64_t input)
+      {
+        return *((double *)&input);
+      }
+
+      for doubles.
+
+      The equivalent functions in java are part of the standard library
+
+      int   Float.floatToIntBits (float value);
+      float Float.intBitsToFloat (int bits);
+
+      long   Double.floatToLongBits  (double value);
+      double Double.longBitsToDouble (long bits);
+
+      Now to actually encode for the network, you first convert from float
+      or double to an integer format, then use one of the int marshallers
+      which essentially call htonl or htonll on the value.
+      So encoding is
+
+      Float
+        -> IEEE 754 floating-point "single format" bit layout
+        -> Int 32 in Network Order
+
+      in C this looks like htonl (floatToIntBits (in))
+
+      Double
+        -> IEEE 754 floating-point "single format" bit layout
+        -> Int 64 in Network Order
+
+      in C this looks like htonll (doubleToIntBits (in))
+
+    IPV4
+      4 bytes - Network order
+
+      - in C, ip address are already in network order, so we can just
+        serialize it straight away.
+    ARRAYS
+      Array <attribute_data> is encoded as
+        <array_length>        2 bytes => Y
+        <attribute_data_0>    Variable # bytes based on type
+          ...
+        <attribute_data_N>    Varialbe # bytes based on type
+
+4. API Changes
+
+   Basically, these reflect Public C API changes as the C implementation is
+   the reference implementation
+
+   1. Added API calls
+
+    /* set a byte type in an event */
+    int
+    lwes_event_set_BYTE
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_BYTE byte);
+
+    /* get a byte type from an event */
+    int
+    lwes_event_get_BYTE
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_BYTE *byte);
+
+    /* set a float type in an event */
+    int
+    lwes_event_set_FLOAT
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_FLOAT flaot);
+
+    /* get a float type from an event */
+    int
+    lwes_event_get_FLOAT
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_FLOAT *float);
+
+    /* set a double type in an event */
+    int
+    lwes_event_set_DOUBLE
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_DOUBLE double);
+
+    /* get a double type from an event */
+    int
+    lwes_event_get_DOUBLE
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_DOUBLE *double);
+
+    /* set a ipv4 type in an event */
+    int
+    lwes_event_set_IPV4
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_IPV4 ipv4);
+
+    /* get a ipv4 type from an event */
+    int
+    lwes_event_get_IPV4
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_IPV4 *ipv4);
+
+    For each of the types we also need array setters/getters
+
+    /* set an entire array in one call */
+    int
+    lwes_event_set_<TYPE>_arr
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_INT_16 arr_length,
+       LWES_<TYPE> *arr);
+
+    /* set an entire array in one call */
+    int
+    lwes_event_get_<TYPE>_arr
+      (struct lwes_event *event,
+       LWES_CONST_SHORT_STRING name,
+       LWES_INT_16 arr_length,
+       LWES_<TYPE> **arr);
+
+  2. Removed/Changed API calls
+
+     Remove all 'enc' related calls, we're all utf-8
+
+     - lwes_event_create_with_encoding
+     - lwes_event_get_encoding
+     - lwes_event_set_encoding
+
