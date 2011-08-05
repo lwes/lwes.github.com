@@ -3,11 +3,12 @@ LWES V1.0
 LWES Core Changes
 
 1. Goals
+    - deprecated type (will be removed in a future release)
+      - ip_addr
     - additional types
       - byte
       - float
       - double
-      - ipv4
     - containers of sorts
       - arrays
     - capacity planning
@@ -27,12 +28,14 @@ LWES Core Changes
     4. arrays are specified by adding [\d+] after the type, the number is the
        maximum length
     5. default values can be set for base types and arrays of base types
+    6. ip_addr type is deprecated. It serializes in little endian instead of
+       big and it doesn't support ipv6. Instead, use string or byte[] types.
 
   Example ESF
 
     MetaEventInfo
     {
-      required   ip_addr          SenderIP;
+      required   string           SenderIP;
       required   uint16           SenderPort
       required   int64            ReceiptTime;
       required   string(10)       version = "25.1.6";   # esf version number
@@ -51,8 +54,7 @@ LWES Core Changes
       required   uint64           aUInt64;
       required   int64            anInt64;
       required   string(10)       aString;
-      required   ip_addr          anIPAddr; # deprecated
-      required   ipv4             ipv4Addr; # ipv4 with better marshalling
+      required   ip_addr          anIPAddr; # deprecated but still supported for now
       required   float            aFloat;   # we might as well support it
       required   double           aDouble;  # this as well
 
@@ -65,7 +67,6 @@ LWES Core Changes
       required   uint64[10]       aUInt64Array;
       required   int64[10]        anInt64Array;
       required   string(10)[10]   aStringArray;
-      required   ip_addr[10]      anIPAddrArray;
 
       optional   string(10)       anotherString;
 
@@ -230,11 +231,6 @@ LWES Core Changes
 
       in C this looks like htonll (doubleToIntBits (in))
 
-    IPV4
-      4 bytes - Network order
-
-      - in C, ip address are already in network order, so we can just
-        serialize it straight away.
     ARRAYS
       Array <attribute_data> is encoded as
         <array_length>        2 bytes => Y
@@ -290,20 +286,6 @@ LWES Core Changes
       (struct lwes_event *event,
        LWES_CONST_SHORT_STRING name,
        LWES_DOUBLE *double);
-
-    /* set a ipv4 type in an event */
-    int
-    lwes_event_set_IPV4
-      (struct lwes_event *event,
-       LWES_CONST_SHORT_STRING name,
-       LWES_IPV4 ipv4);
-
-    /* get a ipv4 type from an event */
-    int
-    lwes_event_get_IPV4
-      (struct lwes_event *event,
-       LWES_CONST_SHORT_STRING name,
-       LWES_IPV4 *ipv4);
 
     For each of the types we also need array setters/getters
 
