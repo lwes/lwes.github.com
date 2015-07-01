@@ -81,7 +81,7 @@
 				<p>
 					Taking these considerations into account, LWES is useful in a number of specialized scenarios:
 					<ul>
-						<li>Monitoring and Instrumentation: machines can report about their status using LWES, and applications are minimally blocked by its presence.  Other machines can receive these events and process them.  <a href="http://www.sourceforge.net/projects/mondemand">MonDemand</a> is an implementation of an monitoring and instrumentation system using LWES.</li>
+						<li>Monitoring and Instrumentation: machines can report about their status using LWES, and applications are minimally blocked by its presence.  Other machines can receive these events and process them.  <a href="http://mondemand.github.io/">MonDemand</a> is an implementation of an monitoring and instrumentation system using LWES.</li>
 						<li>Logging: machines can log events remotely over LWES to journaller machines to be processed in batch at a later date.  The LWES deserialization and access methods perform very well on batch systems such as <a href="http://hadoop.apache.org">Hadoop</a>.</li>
 						<li>Feedback Loops: services can report their status, and a separate listener can make feedback decisions and pass the data back to the running service.</li>
 						<li>Ad-Hoc Debugging: if a system is sending diagnostic events over UDP multicast, you could easily start up a listener and start to see what's happening in real-time.  When you're finished, you simply stop the listener and the system is unaffected.</li>
@@ -118,7 +118,7 @@
 <!-- end page -->
 <!-- start footer -->
 <div id="footer">
-	<p id="legal">&copy; 2009-2011 Light Weight Event System. All Rights Reserved.</p>
+	<p id="legal">&copy; 2009-2015 Light Weight Event System. All Rights Reserved.</p>
 </div>
 <!-- end footer -->
 </body>
